@@ -5,7 +5,7 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Mural Minimalista</title>
     <!-- Importação do Supabase -->
-    <script src="https://cdnjs.cloudflare.com/ajax/libs/supabase-js/2.32.0/index.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.32.0/dist/umd/supabase.min.js"></script>
     <style>
         :root {
             --bg-color: #1e1e1e;
@@ -327,7 +327,7 @@
         const SUPABASE_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImlqdHJnYWRuZmtxaXRkcmpjaGd3Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3MTgwNjg2NTQsImV4cCI6MjAzMzY0NDY1NH0.xsUW6j-J1_PKJvuDLmmF84-NHZEKcmEJgJc9QQrg_2c';
         
         // Inicializar Supabase
-        const supabase = supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
+        const supabaseClient = window.supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
         
         // Estado da aplicação
         let posts = [];
@@ -398,7 +398,7 @@
         async function connect() {
             try {
                 // Buscar posts existentes
-                const { data, error } = await supabase
+                const { data, error } = await supabaseClient
                     .from('posts')
                     .select('*')
                     .order('created_at', { ascending: false });
@@ -420,7 +420,7 @@
         
         // Configurar listener para atualizações em tempo real
         function setupRealtimeListener() {
-            supabase
+            supabaseClient
                 .channel('public:posts')
                 .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'posts' }, payload => {
                     // Adicionar novo post ao início
@@ -544,7 +544,7 @@
             
             try {
                 // Inserir no Supabase
-                const { error } = await supabase
+                const { error } = await supabaseClient
                     .from('posts')
                     .insert([newPost]);
                 
@@ -615,7 +615,7 @@
                     <div class="post-meta">
                         <span>Compartilhado por ${post.author || 'Anônimo'} • ${date}</span>
                         ${post.user_id === userId ? 
-                          `<button class="delete-button" onclick="deletePost(${post.id})">Remover</button>` : ''}
+                          `<button class="delete-button" onclick="deletePost('${post.id}')">Remover</button>` : ''}
                     </div>
                 `;
                 
@@ -628,7 +628,7 @@
         async function deletePost(id) {
             if (confirm('Tem certeza que deseja remover este conteúdo?')) {
                 try {
-                    const { error } = await supabase
+                    const { error } = await supabaseClient
                         .from('posts')
                         .delete()
                         .eq('id', id)
