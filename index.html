@@ -4,8 +4,8 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Mural Minimalista</title>
-    <!-- Importação do Supabase -->
-    <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.32.0/dist/umd/supabase.min.js"></script>
+    <!-- Importação do Supabase - versão CDN atualizada e confiável -->
+    <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.38.4/dist/umd/supabase.min.js"></script>
     <style>
         :root {
             --bg-color: #1e1e1e;
@@ -279,6 +279,16 @@
             text-align: center;
         }
 
+        .error-message {
+            color: #ff453a;
+            margin-top: 10px;
+            font-size: 14px;
+            padding: 8px;
+            background-color: rgba(255, 69, 58, 0.1);
+            border-radius: 8px;
+            display: none;
+        }
+
         @media (max-width: 768px) {
             .input-section {
                 padding: 20px;
@@ -308,6 +318,7 @@
         <div class="input-section">
             <div class="alert alert-success" id="alert-success">Link adicionado com sucesso!</div>
             <div class="alert alert-error" id="alert-error">Não foi possível reconhecer o link. Verifique e tente novamente.</div>
+            <div id="error-message" class="error-message"></div>
             
             <input type="text" id="link-input" placeholder="Cole o link aqui (URL de site, imagem ou vídeo)">
             <textarea id="comment-input" placeholder="Adicione um comentário sobre o link..." rows="2"></textarea>
@@ -326,15 +337,6 @@
         const SUPABASE_URL = 'https://ijtrgadnfkqitdrjchgw.supabase.co';
         const SUPABASE_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImlqdHJnYWRuZmtxaXRkcmpjaGd3Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3MTgwNjg2NTQsImV4cCI6MjAzMzY0NDY1NH0.xsUW6j-J1_PKJvuDLmmF84-NHZEKcmEJgJc9QQrg_2c';
         
-        // Inicializar Supabase
-        const supabaseClient = window.supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
-        
-        // Estado da aplicação
-        let posts = [];
-        let username = localStorage.getItem('username') || 'Anônimo';
-        let userId = localStorage.getItem('userId') || generateUserId();
-        let isConnected = false;
-        
         // Elementos DOM
         const linkInput = document.getElementById('link-input');
         const commentInput = document.getElementById('comment-input');
@@ -348,25 +350,49 @@
         const usernameInput = document.getElementById('username-input');
         const statusIndicator = document.getElementById('status-indicator');
         const statusText = document.getElementById('status-text');
+        const errorMessage = document.getElementById('error-message');
+        
+        // Estado da aplicação
+        let posts = [];
+        let username = localStorage.getItem('username') || 'Anônimo';
+        let userId = localStorage.getItem('userId') || generateUserId();
+        let isConnected = false;
+        
+        // Inicializar Supabase
+        let supabaseClient;
+        try {
+            supabaseClient = window.supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
+            console.log('Supabase inicializado com sucesso');
+        } catch (error) {
+            console.error('Erro ao inicializar Supabase:', error);
+            showError('Falha ao inicializar conexão com o servidor');
+            globalLoading.style.display = 'none';
+        }
         
         // Inicialização
         init();
         
         async function init() {
-            // Carregar nome de usuário salvo
-            usernameInput.value = username;
-            
-            // Configurar listeners de eventos
-            setupEventListeners();
-            
-            // Conectar ao Supabase e buscar posts
-            await connect();
-            
-            // Esconder tela de carregamento
-            globalLoading.style.display = 'none';
-            
-            // Configurar listener em tempo real para novos posts
-            setupRealtimeListener();
+            try {
+                // Carregar nome de usuário salvo
+                usernameInput.value = username;
+                
+                // Configurar listeners de eventos
+                setupEventListeners();
+                
+                // Conectar ao Supabase e buscar posts
+                await connect();
+                
+                // Esconder tela de carregamento
+                globalLoading.style.display = 'none';
+                
+                // Configurar listener em tempo real para novos posts
+                setupRealtimeListener();
+            } catch (error) {
+                console.error('Erro na inicialização:', error);
+                showError(`Falha na inicialização: ${error.message || 'Erro desconhecido'}`);
+                globalLoading.style.display = 'none';
+            }
         }
         
         function setupEventListeners() {
@@ -394,16 +420,33 @@
             return id;
         }
         
+        // Mostrar mensagem de erro
+        function showError(message) {
+            errorMessage.textContent = message;
+            errorMessage.style.display = 'block';
+            setTimeout(() => {
+                errorMessage.style.display = 'none';
+            }, 5000);
+        }
+        
         // Conectar ao Supabase e carregar posts iniciais
         async function connect() {
             try {
+                // Verificar se Supabase está disponível
+                if (!supabaseClient) {
+                    throw new Error('Cliente Supabase não inicializado');
+                }
+                
                 // Buscar posts existentes
                 const { data, error } = await supabaseClient
                     .from('posts')
                     .select('*')
                     .order('created_at', { ascending: false });
                 
-                if (error) throw error;
+                if (error) {
+                    console.error('Erro ao buscar posts:', error);
+                    throw error;
+                }
                 
                 posts = data || [];
                 renderPosts();
@@ -413,6 +456,7 @@
                 updateConnectionStatus();
             } catch (error) {
                 console.error('Erro ao conectar:', error);
+                showError(`Erro ao conectar ao servidor: ${error.message || 'Falha de conexão'}`);
                 isConnected = false;
                 updateConnectionStatus();
             }
@@ -420,25 +464,33 @@
         
         // Configurar listener para atualizações em tempo real
         function setupRealtimeListener() {
-            supabaseClient
-                .channel('public:posts')
-                .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'posts' }, payload => {
-                    // Adicionar novo post ao início
-                    const newPost = payload.new;
-                    
-                    // Verificar se o post já existe (para evitar duplicação)
-                    if (!posts.some(post => post.id === newPost.id)) {
-                        posts.unshift(newPost);
+            try {
+                if (!supabaseClient) return;
+                
+                supabaseClient
+                    .channel('public:posts')
+                    .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'posts' }, payload => {
+                        // Adicionar novo post ao início
+                        const newPost = payload.new;
+                        console.log('Novo post recebido:', newPost);
+                        
+                        // Verificar se o post já existe (para evitar duplicação)
+                        if (!posts.some(post => post.id === newPost.id)) {
+                            posts.unshift(newPost);
+                            renderPosts();
+                        }
+                    })
+                    .on('postgres_changes', { event: 'DELETE', schema: 'public', table: 'posts' }, payload => {
+                        // Remover post excluído
+                        const deletedId = payload.old.id;
+                        posts = posts.filter(post => post.id !== deletedId);
                         renderPosts();
-                    }
-                })
-                .on('postgres_changes', { event: 'DELETE', schema: 'public', table: 'posts' }, payload => {
-                    // Remover post excluído
-                    const deletedId = payload.old.id;
-                    posts = posts.filter(post => post.id !== deletedId);
-                    renderPosts();
-                })
-                .subscribe();
+                    })
+                    .subscribe();
+            } catch (error) {
+                console.error('Erro ao configurar realtime:', error);
+                showError(`Erro ao configurar atualizações em tempo real`);
+            }
         }
         
         // Atualizar indicador de conexão
@@ -452,35 +504,71 @@
             }
         }
         
-        // Função para obter metadados de um link
-        async function getLinkMetadata(url) {
-            if (!isValidURL(url)) {
-                showAlert('error');
-                return null;
+        // Adiciona um novo post
+        async function addPost() {
+            errorMessage.style.display = 'none';
+            
+            const url = linkInput.value.trim();
+            const comment = commentInput.value.trim();
+            
+            if (!url) {
+                alert('Por favor, insira um link válido.');
+                return;
             }
             
+            if (!isValidURL(url)) {
+                showError('O URL fornecido não é válido. Inclua http:// ou https://');
+                return;
+            }
+            
+            // Mostrar estado de carregamento
+            loadingIcon.style.display = 'inline-block';
+            submitButton.disabled = true;
+            
             try {
-                // Verificar se é uma URL de imagem direta
-                if (isImageUrl(url)) {
-                    return {
-                        title: 'Imagem compartilhada',
-                        description: '',
-                        url: url,
-                        image: url
-                    };
+                // Criar objeto do post simplificado (mínimo de campos necessários)
+                const newPost = {
+                    url: url,
+                    comment: comment,
+                    author: username,
+                    user_id: userId,
+                    created_at: new Date().toISOString()
+                };
+                
+                console.log('Tentando salvar post:', newPost);
+                
+                // Inserir no Supabase
+                const { error } = await supabaseClient
+                    .from('posts')
+                    .insert([newPost]);
+                
+                if (error) {
+                    console.error('Erro ao salvar no Supabase:', error);
+                    throw error;
                 }
                 
-                // Para outros URLs, tentamos identificar o tipo
-                return {
-                    title: `Conteúdo compartilhado`,
-                    description: '',
-                    url: url,
-                    image: isVideoUrl(url) ? '/api/placeholder/480/360' : null
-                };
+                console.log('Post salvo com sucesso');
+                
+                // Limpar campos
+                linkInput.value = '';
+                commentInput.value = '';
+                
+                // Mostrar alerta de sucesso
+                showAlert('success');
+                
+                // Se o listener não funcionar, podemos adicionar o post manualmente
+                // e atualizar a visualização imediatamente
+                newPost.id = Date.now().toString(); // ID temporário
+                posts.unshift(newPost);
+                renderPosts();
+                
             } catch (error) {
-                console.error('Erro ao obter metadados do link:', error);
-                showAlert('error');
-                return null;
+                console.error('Erro ao adicionar post:', error);
+                showError(`Falha ao salvar: ${error.message || 'Erro no servidor'}`);
+            } finally {
+                // Esconder estado de carregamento
+                loadingIcon.style.display = 'none';
+                submitButton.disabled = false;
             }
         }
         
@@ -492,86 +580,6 @@
             } catch (_) {
                 return false;
             }
-        }
-        
-        // Verifica se é URL de imagem
-        function isImageUrl(url) {
-            return /\.(jpeg|jpg|gif|png|webp)$/i.test(url);
-        }
-        
-        // Verifica se é URL de vídeo
-        function isVideoUrl(url) {
-            return url.includes('youtube.com') || 
-                   url.includes('youtu.be') || 
-                   url.includes('vimeo.com') ||
-                   url.includes('dailymotion.com') ||
-                   /\.(mp4|webm|ogg)$/i.test(url);
-        }
-        
-        // Adiciona um novo post
-        async function addPost() {
-            const url = linkInput.value.trim();
-            const comment = commentInput.value.trim();
-            
-            if (!url) {
-                alert('Por favor, insira um link válido.');
-                return;
-            }
-            
-            // Mostrar estado de carregamento
-            loadingIcon.style.display = 'inline-block';
-            submitButton.disabled = true;
-            
-            // Obter metadados do link
-            const metadata = await getLinkMetadata(url);
-            
-            if (!metadata) {
-                loadingIcon.style.display = 'none';
-                submitButton.disabled = false;
-                return;
-            }
-            
-            // Criar novo post
-            const newPost = {
-                url: url,
-                title: metadata.title || 'Link compartilhado',
-                image: metadata.image || null,
-                comment: comment,
-                author: username,
-                user_id: userId,
-                created_at: new Date().toISOString()
-            };
-            
-            try {
-                console.log('Tentando salvar post:', newPost);
-                
-                // Inserir no Supabase
-                const { data, error } = await supabaseClient
-                    .from('posts')
-                    .insert([newPost])
-                    .select();
-                
-                if (error) {
-                    console.error('Erro detalhado:', error);
-                    throw error;
-                }
-                
-                console.log('Post salvo com sucesso:', data);
-                
-                // Limpar campos
-                linkInput.value = '';
-                commentInput.value = '';
-                
-                // Mostrar alerta de sucesso
-                showAlert('success');
-            } catch (error) {
-                console.error('Erro ao adicionar post:', error);
-                alert('Erro ao salvar: ' + (error.message || 'Não foi possível salvar o conteúdo'));
-            }
-            
-            // Esconder estado de carregamento
-            loadingIcon.style.display = 'none';
-            submitButton.disabled = false;
         }
         
         // Renderiza todos os posts
@@ -594,7 +602,7 @@
                 
                 let postContent = `
                     <div class="post-content">
-                        <h3 class="post-title">${post.title}</h3>
+                        <h3 class="post-title">${post.title || 'Link compartilhado'}</h3>
                         <a href="${post.url}" target="_blank" class="post-link">${post.url}</a>
                 `;
                 
@@ -603,7 +611,7 @@
                     postContent += `
                         <div class="post-image-container">
                             <img src="${post.image}" alt="Imagem compartilhada" class="post-image" 
-                                 onerror="this.onerror=null; this.src='/api/placeholder/480/320';">
+                                 onerror="this.onerror=null; this.src='https://via.placeholder.com/480x320';">
                         </div>
                     `;
                 }
@@ -644,10 +652,12 @@
                     
                     if (error) throw error;
                     
-                    // O listener de tempo real já vai atualizar a UI
+                    // Atualização manual (caso o realtime falhe)
+                    posts = posts.filter(post => post.id !== id);
+                    renderPosts();
                 } catch (error) {
                     console.error('Erro ao remover post:', error);
-                    alert('Não foi possível remover o conteúdo. Tente novamente.');
+                    showError(`Não foi possível remover o conteúdo: ${error.message || 'Erro no servidor'}`);
                 }
             }
         }
