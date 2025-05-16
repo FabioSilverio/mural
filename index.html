@@ -1,0 +1,451 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Mural Minimalista</title>
+    <style>
+        :root {
+            --bg-color: #1e1e1e;
+            --card-bg: #2d2d2d;
+            --text-color: #f5f5f5;
+            --accent-color: #0071e3;
+            --secondary-bg: #3a3a3a;
+            --border-color: #444444;
+        }
+
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;
+        }
+
+        body {
+            background-color: var(--bg-color);
+            color: var(--text-color);
+            line-height: 1.6;
+            padding: 20px;
+        }
+
+        .container {
+            max-width: 800px;
+            margin: 0 auto;
+        }
+
+        header {
+            text-align: center;
+            margin-bottom: 40px;
+            padding: 20px 0;
+        }
+
+        h1 {
+            font-weight: 500;
+            letter-spacing: -0.5px;
+            margin-bottom: 8px;
+            font-size: 32px;
+        }
+
+        p {
+            color: #a1a1a6;
+        }
+
+        .input-section {
+            background-color: var(--card-bg);
+            border-radius: 12px;
+            padding: 24px;
+            margin-bottom: 40px;
+            box-shadow: 0 4px 20px rgba(0, 0, 0, 0.15);
+        }
+
+        textarea, input[type="text"] {
+            width: 100%;
+            padding: 14px;
+            margin-bottom: 16px;
+            border: none;
+            border-radius: 8px;
+            background-color: var(--secondary-bg);
+            color: var(--text-color);
+            font-size: 16px;
+            transition: all 0.3s ease;
+        }
+
+        textarea:focus, input[type="text"]:focus {
+            outline: none;
+            box-shadow: 0 0 0 2px var(--accent-color);
+        }
+
+        textarea::placeholder, input::placeholder {
+            color: #8e8e93;
+        }
+
+        button {
+            background-color: var(--accent-color);
+            color: white;
+            border: none;
+            padding: 12px 24px;
+            font-size: 16px;
+            border-radius: 8px;
+            cursor: pointer;
+            transition: background-color 0.3s;
+            font-weight: 500;
+        }
+
+        button:hover {
+            background-color: #0077ed;
+        }
+
+        .feed {
+            display: flex;
+            flex-direction: column;
+            gap: 20px;
+        }
+
+        .post {
+            background-color: var(--card-bg);
+            border-radius: 12px;
+            padding: 24px;
+            box-shadow: 0 2px 10px rgba(0, 0, 0, 0.1);
+            transition: transform 0.2s;
+        }
+
+        .post:hover {
+            transform: translateY(-3px);
+        }
+
+        .post-content {
+            margin-bottom: 16px;
+        }
+
+        .post-title {
+            font-size: 18px;
+            margin-bottom: 8px;
+            font-weight: 500;
+        }
+
+        .post-image-container {
+            width: 100%;
+            margin: 16px 0;
+            border-radius: 8px;
+            overflow: hidden;
+        }
+
+        .post-image {
+            width: 100%;
+            border-radius: 8px;
+            display: block;
+        }
+
+        .post-link {
+            color: var(--accent-color);
+            text-decoration: none;
+            display: block;
+            margin-bottom: 10px;
+            word-break: break-all;
+        }
+
+        .post-link:hover {
+            text-decoration: underline;
+        }
+
+        .post-comment {
+            padding: 12px 16px;
+            background-color: var(--secondary-bg);
+            border-radius: 8px;
+            margin-top: 8px;
+            font-style: italic;
+            border-left: 3px solid var(--accent-color);
+        }
+
+        .post-meta {
+            font-size: 14px;
+            color: #a1a1a6;
+            margin-top: 16px;
+            display: flex;
+            justify-content: space-between;
+        }
+
+        .delete-button {
+            background-color: transparent;
+            color: #ff453a;
+            padding: 6px 12px;
+            font-size: 14px;
+            margin-left: auto;
+        }
+
+        .delete-button:hover {
+            background-color: rgba(255, 69, 58, 0.1);
+        }
+
+        .empty-message {
+            text-align: center;
+            color: #8e8e93;
+            padding: 40px 0;
+        }
+
+        .loading {
+            display: inline-block;
+            width: 20px;
+            height: 20px;
+            border: 2px solid rgba(255, 255, 255, 0.3);
+            border-radius: 50%;
+            border-top-color: var(--text-color);
+            animation: spin 1s linear infinite;
+            margin-right: 10px;
+        }
+
+        @keyframes spin {
+            to {
+                transform: rotate(360deg);
+            }
+        }
+
+        .alert {
+            padding: 16px;
+            border-radius: 8px;
+            margin-bottom: 20px;
+            font-size: 14px;
+            display: none;
+        }
+
+        .alert-success {
+            background-color: rgba(48, 209, 88, 0.2);
+            color: #30d158;
+        }
+
+        .alert-error {
+            background-color: rgba(255, 69, 58, 0.2);
+            color: #ff453a;
+        }
+
+        @media (max-width: 768px) {
+            .input-section {
+                padding: 20px;
+            }
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <header>
+            <h1>Mural Minimalista</h1>
+            <p>Compartilhe links e conteúdo com seu amigo</p>
+        </header>
+
+        <div class="input-section">
+            <div class="alert alert-success" id="alert-success">Link adicionado com sucesso!</div>
+            <div class="alert alert-error" id="alert-error">Não foi possível reconhecer o link. Verifique e tente novamente.</div>
+            
+            <input type="text" id="link-input" placeholder="Cole o link aqui (URL de site, imagem ou vídeo)">
+            <textarea id="comment-input" placeholder="Adicione um comentário sobre o link..." rows="2"></textarea>
+            <button id="submit-button"><span id="loading-icon" class="loading" style="display: none;"></span> Adicionar ao Mural</button>
+        </div>
+
+        <div class="feed" id="feed">
+            <!-- Posts serão adicionados aqui -->
+            <div class="empty-message" id="empty-message">
+                Nenhum conteúdo compartilhado ainda. Adicione o primeiro link!
+            </div>
+        </div>
+    </div>
+
+    <script>
+        // Inicialização de dados
+        let posts = JSON.parse(localStorage.getItem('posts')) || [];
+        
+        // Elementos DOM
+        const linkInput = document.getElementById('link-input');
+        const commentInput = document.getElementById('comment-input');
+        const submitButton = document.getElementById('submit-button');
+        const feed = document.getElementById('feed');
+        const emptyMessage = document.getElementById('empty-message');
+        const loadingIcon = document.getElementById('loading-icon');
+        const alertSuccess = document.getElementById('alert-success');
+        const alertError = document.getElementById('alert-error');
+        
+        // Renderiza posts salvos
+        renderPosts();
+        
+        // Event listeners
+        submitButton.addEventListener('click', addPost);
+        
+        // Função para obter metadados de um link
+        async function getLinkMetadata(url) {
+            if (!isValidURL(url)) {
+                showAlert('error');
+                return null;
+            }
+            
+            try {
+                // Verificar se é uma URL de imagem direta
+                if (isImageUrl(url)) {
+                    return {
+                        title: 'Imagem compartilhada',
+                        description: '',
+                        url: url,
+                        image: url
+                    };
+                }
+                
+                // Para outros URLs, tentamos obter o título da página simulando o comportamento
+                // Em um ambiente real, isso requereria um backend para fazer o scraping
+                return {
+                    title: `Conteúdo compartilhado`,
+                    description: '',
+                    url: url,
+                    image: isVideoUrl(url) ? '/api/placeholder/480/360' : null
+                };
+            } catch (error) {
+                console.error('Erro ao obter metadados do link:', error);
+                showAlert('error');
+                return null;
+            }
+        }
+        
+        // Valida URL
+        function isValidURL(string) {
+            try {
+                new URL(string);
+                return true;
+            } catch (_) {
+                return false;
+            }
+        }
+        
+        // Verifica se é URL de imagem
+        function isImageUrl(url) {
+            return /\.(jpeg|jpg|gif|png|webp)$/i.test(url);
+        }
+        
+        // Verifica se é URL de vídeo
+        function isVideoUrl(url) {
+            return url.includes('youtube.com') || 
+                   url.includes('youtu.be') || 
+                   url.includes('vimeo.com') ||
+                   url.includes('dailymotion.com') ||
+                   /\.(mp4|webm|ogg)$/i.test(url);
+        }
+        
+        // Adiciona um novo post
+        async function addPost() {
+            const url = linkInput.value.trim();
+            const comment = commentInput.value.trim();
+            
+            if (!url) {
+                alert('Por favor, insira um link válido.');
+                return;
+            }
+            
+            // Mostrar estado de carregamento
+            loadingIcon.style.display = 'inline-block';
+            submitButton.disabled = true;
+            
+            // Obter metadados do link
+            const metadata = await getLinkMetadata(url);
+            
+            // Esconder estado de carregamento
+            loadingIcon.style.display = 'none';
+            submitButton.disabled = false;
+            
+            if (!metadata) {
+                return;
+            }
+            
+            // Criar novo post
+            const newPost = {
+                id: Date.now(),
+                url: url,
+                title: metadata.title || 'Link compartilhado',
+                image: metadata.image || null,
+                comment: comment,
+                date: new Date().toLocaleString()
+            };
+            
+            // Adicionar à lista e salvar
+            posts.unshift(newPost);
+            localStorage.setItem('posts', JSON.stringify(posts));
+            
+            // Limpar campos
+            linkInput.value = '';
+            commentInput.value = '';
+            
+            // Renderizar posts atualizados
+            renderPosts();
+            
+            // Mostrar alerta de sucesso
+            showAlert('success');
+        }
+        
+        // Renderiza todos os posts
+        function renderPosts() {
+            if (posts.length === 0) {
+                emptyMessage.style.display = 'block';
+                return;
+            }
+            
+            emptyMessage.style.display = 'none';
+            
+            // Limpar feed exceto a mensagem vazia
+            while (feed.firstChild && feed.firstChild !== emptyMessage) {
+                feed.removeChild(feed.firstChild);
+            }
+            
+            // Adicionar cada post
+            posts.forEach(post => {
+                const postElement = document.createElement('div');
+                postElement.className = 'post';
+                
+                let postContent = `
+                    <div class="post-content">
+                        <h3 class="post-title">${post.title}</h3>
+                        <a href="${post.url}" target="_blank" class="post-link">${post.url}</a>
+                `;
+                
+                // Adicionar imagem se disponível
+                if (post.image) {
+                    postContent += `
+                        <div class="post-image-container">
+                            <img src="${post.image}" alt="Imagem compartilhada" class="post-image" 
+                                 onerror="this.onerror=null; this.src='/api/placeholder/480/320';">
+                        </div>
+                    `;
+                }
+                
+                // Adicionar comentário se disponível
+                if (post.comment) {
+                    postContent += `
+                        <div class="post-comment">${post.comment}</div>
+                    `;
+                }
+                
+                postContent += `
+                    </div>
+                    <div class="post-meta">
+                        <span>${post.date}</span>
+                        <button class="delete-button" onclick="deletePost(${post.id})">Remover</button>
+                    </div>
+                `;
+                
+                postElement.innerHTML = postContent;
+                feed.insertBefore(postElement, emptyMessage);
+            });
+        }
+        
+        // Função para deletar um post
+        function deletePost(id) {
+            posts = posts.filter(post => post.id !== id);
+            localStorage.setItem('posts', JSON.stringify(posts));
+            renderPosts();
+        }
+        
+        // Mostrar alertas
+        function showAlert(type) {
+            const alert = type === 'success' ? alertSuccess : alertError;
+            alert.style.display = 'block';
+            setTimeout(() => {
+                alert.style.display = 'none';
+            }, 3000);
+        }
+    </script>
+</body>
+</html>
