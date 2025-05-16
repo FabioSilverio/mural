@@ -4,9 +4,6 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Mural Minimalista</title>
-    <!-- Firebase -->
-    <script src="https://cdnjs.cloudflare.com/ajax/libs/firebase/9.22.0/firebase-app-compat.min.js"></script>
-    <script src="https://cdnjs.cloudflare.com/ajax/libs/firebase/9.22.0/firebase-database-compat.min.js"></script>
     <style>
         :root {
             --bg-color: #1e1e1e;
@@ -221,28 +218,6 @@
             color: #ff453a;
         }
 
-        .global-loading {
-            position: fixed;
-            top: 0;
-            left: 0;
-            width: 100%;
-            height: 100%;
-            background-color: rgba(0, 0, 0, 0.7);
-            display: flex;
-            justify-content: center;
-            align-items: center;
-            z-index: 1000;
-        }
-
-        .loader {
-            width: 48px;
-            height: 48px;
-            border: 5px solid rgba(255, 255, 255, 0.3);
-            border-radius: 50%;
-            border-top-color: var(--accent-color);
-            animation: spin 1s linear infinite;
-        }
-
         .username-input {
             background-color: var(--secondary-bg);
             padding: 6px 12px;
@@ -255,30 +230,6 @@
             max-width: 150px;
         }
 
-        .sync-status {
-            display: inline-block;
-            width: 12px;
-            height: 12px;
-            border-radius: 50%;
-            margin-left: 8px;
-            vertical-align: middle;
-        }
-
-        .sync-connected {
-            background-color: #30d158;
-        }
-
-        .sync-disconnected {
-            background-color: #ff453a;
-        }
-
-        .sync-text {
-            font-size: 14px;
-            color: #8e8e93;
-            margin-left: 4px;
-            vertical-align: middle;
-        }
-
         @media (max-width: 768px) {
             .input-section {
                 padding: 20px;
@@ -287,18 +238,12 @@
     </style>
 </head>
 <body>
-    <div id="global-loading" class="global-loading">
-        <div class="loader"></div>
-    </div>
-
     <div class="container">
         <header>
             <h1>Mural Minimalista</h1>
             <p>Compartilhe links e conteúdo com seus amigos</p>
             <div style="margin-top: 12px;">
                 <input type="text" id="username-input" class="username-input" placeholder="Seu nome">
-                <span id="sync-status" class="sync-status"></span>
-                <span id="sync-text" class="sync-text">Conectando...</span>
             </div>
         </header>
 
@@ -320,26 +265,14 @@
     </div>
 
     <script>
-        // Configuração do Firebase
-        const firebaseConfig = {
-            apiKey: "AIzaSyBnA2qnQ9UGXiLMw3gcBZrfVXPbEpPM5uY",
-            authDomain: "mural-digital-app.firebaseapp.com",
-            databaseURL: "https://mural-digital-app-default-rtdb.firebaseio.com",
-            projectId: "mural-digital-app",
-            storageBucket: "mural-digital-app.appspot.com",
-            messagingSenderId: "124759114556",
-            appId: "1:124759114556:web:2d2d3e4e3c7e9b6c7d24c9"
-        };
-
-        // Inicializar Firebase
-        firebase.initializeApp(firebaseConfig);
-        const database = firebase.database();
-        const postsRef = database.ref('posts');
+        // Configuração do servidor de backend (usando JSONBin.io como servidor gratuito)
+        const BIN_ID = "657ad3dedc74654018a86cd5"; // ID do "bin" no JSONBin
+        const API_KEY = "$2a$10$YRLVcuqTFk9XHoFgkvOe2eZlQFDUJ5y4XzZJIQEUbkk3dMm5lxXsa"; // Chave de acesso
+        const BASE_URL = `https://api.jsonbin.io/v3/b/${BIN_ID}`;
         
         // Estado da aplicação
         let posts = [];
         let username = localStorage.getItem('username') || 'Anônimo';
-        let isConnected = false;
         
         // Elementos DOM
         const linkInput = document.getElementById('link-input');
@@ -350,10 +283,7 @@
         const loadingIcon = document.getElementById('loading-icon');
         const alertSuccess = document.getElementById('alert-success');
         const alertError = document.getElementById('alert-error');
-        const globalLoading = document.getElementById('global-loading');
         const usernameInput = document.getElementById('username-input');
-        const syncStatus = document.getElementById('sync-status');
-        const syncText = document.getElementById('sync-text');
         
         // Inicialização
         init();
@@ -362,28 +292,14 @@
             // Carregar nome de usuário salvo
             usernameInput.value = username;
             
-            // Monitorar status de conexão
-            const connectedRef = database.ref('.info/connected');
-            connectedRef.on('value', (snap) => {
-                isConnected = snap.val() === true;
-                updateConnectionStatus();
-            });
-            
             // Configurar listeners
             setupEventListeners();
             
-            // Buscar posts do Firebase
+            // Buscar posts
             fetchPosts();
-        }
-        
-        function updateConnectionStatus() {
-            if (isConnected) {
-                syncStatus.className = 'sync-status sync-connected';
-                syncText.textContent = 'Online';
-            } else {
-                syncStatus.className = 'sync-status sync-disconnected';
-                syncText.textContent = 'Offline';
-            }
+            
+            // Configurar intervalo para atualizar posts a cada 10 segundos
+            setInterval(fetchPosts, 10000);
         }
         
         function setupEventListeners() {
@@ -404,25 +320,68 @@
             });
         }
         
-        // Buscar posts do Firebase
-        function fetchPosts() {
-            postsRef.on('value', (snapshot) => {
-                posts = [];
-                snapshot.forEach((childSnapshot) => {
-                    const post = childSnapshot.val();
-                    post.key = childSnapshot.key;
-                    posts.push(post);
+        // Buscar posts do backend
+        async function fetchPosts() {
+            try {
+                const response = await fetch(BASE_URL, {
+                    method: 'GET',
+                    headers: {
+                        'X-Master-Key': API_KEY
+                    }
                 });
+                
+                if (!response.ok) {
+                    // Se o bin não existir, é a primeira vez - criar um novo com array vazio
+                    if (response.status === 404) {
+                        posts = [];
+                        await savePosts();
+                    } else {
+                        console.error('Erro ao buscar posts:', response.statusText);
+                    }
+                    return;
+                }
+                
+                const data = await response.json();
+                posts = data.record.posts || [];
                 
                 // Ordenar posts do mais recente para o mais antigo
                 posts.sort((a, b) => b.timestamp - a.timestamp);
                 
                 // Renderizar posts
                 renderPosts();
+            } catch (error) {
+                console.error('Erro ao buscar posts:', error);
+                // Em caso de erro, tentar usar posts locais armazenados
+                const localPosts = localStorage.getItem('postsCache');
+                if (localPosts) {
+                    posts = JSON.parse(localPosts);
+                    renderPosts();
+                }
+            }
+        }
+        
+        // Salvar posts no backend
+        async function savePosts() {
+            try {
+                // Salvar uma cópia local para fallback
+                localStorage.setItem('postsCache', JSON.stringify(posts));
                 
-                // Esconder tela de carregamento
-                globalLoading.style.display = 'none';
-            });
+                // Enviar para o servidor
+                const response = await fetch(BASE_URL, {
+                    method: 'PUT',
+                    headers: {
+                        'Content-Type': 'application/json',
+                        'X-Master-Key': API_KEY
+                    },
+                    body: JSON.stringify({ posts })
+                });
+                
+                if (!response.ok) {
+                    console.error('Erro ao salvar posts:', response.statusText);
+                }
+            } catch (error) {
+                console.error('Erro ao salvar posts:', error);
+            }
         }
         
         // Função para obter metadados de um link
@@ -508,6 +467,7 @@
             
             // Criar novo post
             const newPost = {
+                id: Date.now().toString(),
                 url: url,
                 title: metadata.title || 'Link compartilhado',
                 image: metadata.image || null,
@@ -517,21 +477,21 @@
                 date: new Date().toLocaleString()
             };
             
-            // Adicionar ao Firebase
-            try {
-                const newPostRef = postsRef.push();
-                await newPostRef.set(newPost);
-                
-                // Limpar campos
-                linkInput.value = '';
-                commentInput.value = '';
-                
-                // Mostrar alerta de sucesso
-                showAlert('success');
-            } catch (error) {
-                console.error('Erro ao adicionar post:', error);
-                alert('Não foi possível salvar o conteúdo. Tente novamente.');
-            }
+            // Adicionar ao array de posts
+            posts.unshift(newPost);
+            
+            // Salvar posts
+            await savePosts();
+            
+            // Limpar campos
+            linkInput.value = '';
+            commentInput.value = '';
+            
+            // Renderizar posts
+            renderPosts();
+            
+            // Mostrar alerta de sucesso
+            showAlert('success');
         }
         
         // Renderiza todos os posts
@@ -581,7 +541,7 @@
                     <div class="post-meta">
                         <span>Compartilhado por ${post.author || 'Anônimo'} • ${post.date}</span>
                         ${post.author === username ? 
-                          `<button class="delete-button" onclick="deletePost('${post.key}')">Remover</button>` : ''}
+                          `<button class="delete-button" onclick="deletePost('${post.id}')">Remover</button>` : ''}
                     </div>
                 `;
                 
@@ -591,13 +551,13 @@
         }
         
         // Função para deletar um post
-        async function deletePost(key) {
+        async function deletePost(id) {
             if (confirm('Tem certeza que deseja remover este conteúdo?')) {
-                try {
-                    await postsRef.child(key).remove();
-                } catch (error) {
-                    console.error('Erro ao remover post:', error);
-                    alert('Não foi possível remover o conteúdo. Tente novamente.');
+                const index = posts.findIndex(post => post.id === id);
+                if (index !== -1) {
+                    posts.splice(index, 1);
+                    await savePosts();
+                    renderPosts();
                 }
             }
         }
