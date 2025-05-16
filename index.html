@@ -4,6 +4,8 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Mural Minimalista</title>
+    <!-- Importação do Supabase -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/supabase-js/2.32.0/index.js"></script>
     <style>
         :root {
             --bg-color: #1e1e1e;
@@ -163,6 +165,7 @@
             margin-top: 16px;
             display: flex;
             justify-content: space-between;
+            align-items: center;
         }
 
         .delete-button {
@@ -170,7 +173,6 @@
             color: #ff453a;
             padding: 6px 12px;
             font-size: 14px;
-            margin-left: auto;
         }
 
         .delete-button:hover {
@@ -230,6 +232,53 @@
             max-width: 150px;
         }
 
+        .status-indicator {
+            display: inline-block;
+            width: 10px;
+            height: 10px;
+            border-radius: 50%;
+            margin-right: 8px;
+            background-color: #ff453a;
+        }
+
+        .status-indicator.online {
+            background-color: #30d158;
+        }
+
+        .status-text {
+            font-size: 14px;
+            color: #a1a1a6;
+        }
+
+        .global-loading {
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background-color: rgba(0, 0, 0, 0.7);
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            z-index: 1000;
+        }
+
+        .loader {
+            width: 48px;
+            height: 48px;
+            border: 5px solid rgba(255, 255, 255, 0.3);
+            border-radius: 50%;
+            border-top-color: var(--accent-color);
+            animation: spin 1s linear infinite;
+        }
+
+        .loader-text {
+            color: white;
+            margin-top: 16px;
+            font-size: 16px;
+            text-align: center;
+        }
+
         @media (max-width: 768px) {
             .input-section {
                 padding: 20px;
@@ -238,12 +287,21 @@
     </style>
 </head>
 <body>
+    <div id="global-loading" class="global-loading">
+        <div style="text-align: center;">
+            <div class="loader"></div>
+            <div class="loader-text">Conectando ao servidor...</div>
+        </div>
+    </div>
+
     <div class="container">
         <header>
             <h1>Mural Minimalista</h1>
             <p>Compartilhe links e conteúdo com seus amigos</p>
             <div style="margin-top: 12px;">
                 <input type="text" id="username-input" class="username-input" placeholder="Seu nome">
+                <span id="status-indicator" class="status-indicator"></span>
+                <span id="status-text" class="status-text">Conectando...</span>
             </div>
         </header>
 
@@ -257,7 +315,6 @@
         </div>
 
         <div class="feed" id="feed">
-            <!-- Posts serão adicionados aqui -->
             <div class="empty-message" id="empty-message">
                 Nenhum conteúdo compartilhado ainda. Adicione o primeiro link!
             </div>
@@ -265,14 +322,18 @@
     </div>
 
     <script>
-        // Configuração do servidor de backend (usando JSONBin.io como servidor gratuito)
-        const BIN_ID = "657ad3dedc74654018a86cd5"; // ID do "bin" no JSONBin
-        const API_KEY = "$2a$10$YRLVcuqTFk9XHoFgkvOe2eZlQFDUJ5y4XzZJIQEUbkk3dMm5lxXsa"; // Chave de acesso
-        const BASE_URL = `https://api.jsonbin.io/v3/b/${BIN_ID}`;
+        // Configurações do Supabase (banco de dados em tempo real)
+        const SUPABASE_URL = 'https://ijtrgadnfkqitdrjchgw.supabase.co';
+        const SUPABASE_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImlqdHJnYWRuZmtxaXRkcmpjaGd3Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3MTgwNjg2NTQsImV4cCI6MjAzMzY0NDY1NH0.xsUW6j-J1_PKJvuDLmmF84-NHZEKcmEJgJc9QQrg_2c';
+        
+        // Inicializar Supabase
+        const supabase = supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
         
         // Estado da aplicação
         let posts = [];
         let username = localStorage.getItem('username') || 'Anônimo';
+        let userId = localStorage.getItem('userId') || generateUserId();
+        let isConnected = false;
         
         // Elementos DOM
         const linkInput = document.getElementById('link-input');
@@ -283,23 +344,29 @@
         const loadingIcon = document.getElementById('loading-icon');
         const alertSuccess = document.getElementById('alert-success');
         const alertError = document.getElementById('alert-error');
+        const globalLoading = document.getElementById('global-loading');
         const usernameInput = document.getElementById('username-input');
+        const statusIndicator = document.getElementById('status-indicator');
+        const statusText = document.getElementById('status-text');
         
         // Inicialização
         init();
         
-        function init() {
+        async function init() {
             // Carregar nome de usuário salvo
             usernameInput.value = username;
             
-            // Configurar listeners
+            // Configurar listeners de eventos
             setupEventListeners();
             
-            // Buscar posts
-            fetchPosts();
+            // Conectar ao Supabase e buscar posts
+            await connect();
             
-            // Configurar intervalo para atualizar posts a cada 10 segundos
-            setInterval(fetchPosts, 10000);
+            // Esconder tela de carregamento
+            globalLoading.style.display = 'none';
+            
+            // Configurar listener em tempo real para novos posts
+            setupRealtimeListener();
         }
         
         function setupEventListeners() {
@@ -320,67 +387,68 @@
             });
         }
         
-        // Buscar posts do backend
-        async function fetchPosts() {
+        // Gerar ID único para o usuário
+        function generateUserId() {
+            const id = Math.random().toString(36).substring(2, 15) + Math.random().toString(36).substring(2, 15);
+            localStorage.setItem('userId', id);
+            return id;
+        }
+        
+        // Conectar ao Supabase e carregar posts iniciais
+        async function connect() {
             try {
-                const response = await fetch(BASE_URL, {
-                    method: 'GET',
-                    headers: {
-                        'X-Master-Key': API_KEY
-                    }
-                });
+                // Buscar posts existentes
+                const { data, error } = await supabase
+                    .from('posts')
+                    .select('*')
+                    .order('created_at', { ascending: false });
                 
-                if (!response.ok) {
-                    // Se o bin não existir, é a primeira vez - criar um novo com array vazio
-                    if (response.status === 404) {
-                        posts = [];
-                        await savePosts();
-                    } else {
-                        console.error('Erro ao buscar posts:', response.statusText);
-                    }
-                    return;
-                }
+                if (error) throw error;
                 
-                const data = await response.json();
-                posts = data.record.posts || [];
-                
-                // Ordenar posts do mais recente para o mais antigo
-                posts.sort((a, b) => b.timestamp - a.timestamp);
-                
-                // Renderizar posts
+                posts = data || [];
                 renderPosts();
+                
+                // Atualizar status
+                isConnected = true;
+                updateConnectionStatus();
             } catch (error) {
-                console.error('Erro ao buscar posts:', error);
-                // Em caso de erro, tentar usar posts locais armazenados
-                const localPosts = localStorage.getItem('postsCache');
-                if (localPosts) {
-                    posts = JSON.parse(localPosts);
-                    renderPosts();
-                }
+                console.error('Erro ao conectar:', error);
+                isConnected = false;
+                updateConnectionStatus();
             }
         }
         
-        // Salvar posts no backend
-        async function savePosts() {
-            try {
-                // Salvar uma cópia local para fallback
-                localStorage.setItem('postsCache', JSON.stringify(posts));
-                
-                // Enviar para o servidor
-                const response = await fetch(BASE_URL, {
-                    method: 'PUT',
-                    headers: {
-                        'Content-Type': 'application/json',
-                        'X-Master-Key': API_KEY
-                    },
-                    body: JSON.stringify({ posts })
-                });
-                
-                if (!response.ok) {
-                    console.error('Erro ao salvar posts:', response.statusText);
-                }
-            } catch (error) {
-                console.error('Erro ao salvar posts:', error);
+        // Configurar listener para atualizações em tempo real
+        function setupRealtimeListener() {
+            supabase
+                .channel('public:posts')
+                .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'posts' }, payload => {
+                    // Adicionar novo post ao início
+                    const newPost = payload.new;
+                    
+                    // Verificar se o post já existe (para evitar duplicação)
+                    if (!posts.some(post => post.id === newPost.id)) {
+                        posts.unshift(newPost);
+                        renderPosts();
+                    }
+                })
+                .on('postgres_changes', { event: 'DELETE', schema: 'public', table: 'posts' }, payload => {
+                    // Remover post excluído
+                    const deletedId = payload.old.id;
+                    posts = posts.filter(post => post.id !== deletedId);
+                    renderPosts();
+                })
+                .subscribe();
+        }
+        
+        // Atualizar indicador de conexão
+        function updateConnectionStatus() {
+            if (isConnected) {
+                statusIndicator.classList.add('online');
+                statusText.textContent = 'Conectado';
+            } else {
+                statusIndicator.classList.remove('online');
+                statusText.textContent = 'Desconectado';
             }
         }
         
@@ -457,58 +525,61 @@
             // Obter metadados do link
             const metadata = await getLinkMetadata(url);
             
-            // Esconder estado de carregamento
-            loadingIcon.style.display = 'none';
-            submitButton.disabled = false;
-            
             if (!metadata) {
+                loadingIcon.style.display = 'none';
+                submitButton.disabled = false;
                 return;
             }
             
             // Criar novo post
             const newPost = {
-                id: Date.now().toString(),
                 url: url,
                 title: metadata.title || 'Link compartilhado',
                 image: metadata.image || null,
                 comment: comment,
                 author: username,
-                timestamp: Date.now(),
-                date: new Date().toLocaleString()
+                user_id: userId,
+                created_at: new Date().toISOString()
             };
             
-            // Adicionar ao array de posts
-            posts.unshift(newPost);
+            try {
+                // Inserir no Supabase
+                const { error } = await supabase
+                    .from('posts')
+                    .insert([newPost]);
+                
+                if (error) throw error;
+                
+                // Limpar campos
+                linkInput.value = '';
+                commentInput.value = '';
+                
+                // Mostrar alerta de sucesso
+                showAlert('success');
+            } catch (error) {
+                console.error('Erro ao adicionar post:', error);
+                alert('Não foi possível salvar o conteúdo. Tente novamente.');
+            }
             
-            // Salvar posts
-            await savePosts();
-            
-            // Limpar campos
-            linkInput.value = '';
-            commentInput.value = '';
-            
-            // Renderizar posts
-            renderPosts();
-            
-            // Mostrar alerta de sucesso
-            showAlert('success');
+            // Esconder estado de carregamento
+            loadingIcon.style.display = 'none';
+            submitButton.disabled = false;
         }
         
         // Renderiza todos os posts
         function renderPosts() {
             if (posts.length === 0) {
                 emptyMessage.style.display = 'block';
+                feed.innerHTML = '';
+                feed.appendChild(emptyMessage);
                 return;
             }
             
             emptyMessage.style.display = 'none';
             
-            // Limpar feed exceto a mensagem vazia
-            while (feed.firstChild && feed.firstChild !== emptyMessage) {
-                feed.removeChild(feed.firstChild);
-            }
+            // Limpar feed e adicionar cada post
+            feed.innerHTML = '';
             
-            // Adicionar cada post
             posts.forEach(post => {
                 const postElement = document.createElement('div');
                 postElement.className = 'post';
@@ -536,28 +607,39 @@
                     `;
                 }
                 
+                // Converter data ISO para formato legível
+                const date = new Date(post.created_at).toLocaleString();
+                
                 postContent += `
                     </div>
                     <div class="post-meta">
-                        <span>Compartilhado por ${post.author || 'Anônimo'} • ${post.date}</span>
-                        ${post.author === username ? 
-                          `<button class="delete-button" onclick="deletePost('${post.id}')">Remover</button>` : ''}
+                        <span>Compartilhado por ${post.author || 'Anônimo'} • ${date}</span>
+                        ${post.user_id === userId ? 
+                          `<button class="delete-button" onclick="deletePost(${post.id})">Remover</button>` : ''}
                     </div>
                 `;
                 
                 postElement.innerHTML = postContent;
-                feed.insertBefore(postElement, emptyMessage);
+                feed.appendChild(postElement);
             });
         }
         
         // Função para deletar um post
         async function deletePost(id) {
             if (confirm('Tem certeza que deseja remover este conteúdo?')) {
-                const index = posts.findIndex(post => post.id === id);
-                if (index !== -1) {
-                    posts.splice(index, 1);
-                    await savePosts();
-                    renderPosts();
+                try {
+                    const { error } = await supabase
+                        .from('posts')
+                        .delete()
+                        .eq('id', id)
+                        .eq('user_id', userId); // Garantir que apenas o autor pode deletar
+                    
+                    if (error) throw error;
+                    
+                    // O listener de tempo real já vai atualizar a UI
+                } catch (error) {
+                    console.error('Erro ao remover post:', error);
+                    alert('Não foi possível remover o conteúdo. Tente novamente.');
                 }
             }
         }
