@@ -4,8 +4,9 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Mural Minimalista</title>
-    <!-- Importação do Supabase - versão simplificada e confiável -->
-    <script src="https://unpkg.com/@supabase/supabase-js@2.21.0"></script>
+    <!-- Usar LocalBase para armazenamento local persistente compartilhado -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/localforage/1.10.0/localforage.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/crypto-js/4.1.1/crypto-js.min.js"></script>
     <style>
         :root {
             --bg-color: #1e1e1e;
@@ -232,22 +233,50 @@
             max-width: 150px;
         }
 
-        .status-indicator {
-            display: inline-block;
-            width: 10px;
-            height: 10px;
-            border-radius: 50%;
-            margin-right: 8px;
-            background-color: #ff453a;
-        }
-
-        .status-indicator.online {
-            background-color: #30d158;
-        }
-
-        .status-text {
+        .error-message {
+            color: #ff453a;
+            margin-top: 10px;
             font-size: 14px;
-            color: #a1a1a6;
+            padding: 8px;
+            background-color: rgba(255, 69, 58, 0.1);
+            border-radius: 8px;
+            display: none;
+        }
+
+        .info-banner {
+            background-color: rgba(48, 107, 209, 0.2);
+            color: #30d158;
+            text-align: center;
+            padding: 12px;
+            margin: 0 0 20px 0;
+            border-radius: 8px;
+            font-size: 14px;
+        }
+
+        .storage-url-container {
+            margin-top: 15px;
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            background-color: var(--secondary-bg);
+            padding: 10px;
+            border-radius: 8px;
+        }
+
+        .storage-url-input {
+            flex-grow: 1;
+            background-color: var(--bg-color);
+            color: var(--text-color);
+            padding: 8px;
+            border: none;
+            border-radius: 4px;
+            font-size: 14px;
+        }
+
+        .copy-btn {
+            padding: 6px 10px;
+            font-size: 14px;
+            border-radius: 4px;
         }
 
         .global-loading {
@@ -279,25 +308,35 @@
             text-align: center;
         }
 
-        .error-message {
-            color: #ff453a;
-            margin-top: 10px;
-            font-size: 14px;
-            padding: 8px;
-            background-color: rgba(255, 69, 58, 0.1);
-            border-radius: 8px;
+        .modal {
             display: none;
+            position: fixed;
+            z-index: 1001;
+            left: 0;
+            top: 0;
+            width: 100%;
+            height: 100%;
+            background-color: rgba(0,0,0,0.7);
         }
 
-        .offline-mode {
-            background-color: #ff9500;
-            color: white;
-            text-align: center;
-            padding: 10px;
-            margin-bottom: 20px;
-            border-radius: 8px;
-            font-size: 14px;
-            display: none;
+        .modal-content {
+            background-color: var(--card-bg);
+            margin: 15% auto;
+            padding: 20px;
+            border-radius: 10px;
+            width: 80%;
+            max-width: 500px;
+        }
+
+        .modal-content h3 {
+            margin-bottom: 15px;
+        }
+
+        .modal-buttons {
+            display: flex;
+            justify-content: flex-end;
+            gap: 10px;
+            margin-top: 20px;
         }
 
         @media (max-width: 768px) {
@@ -311,7 +350,22 @@
     <div id="global-loading" class="global-loading">
         <div style="text-align: center;">
             <div class="loader"></div>
-            <div class="loader-text">Conectando ao servidor...</div>
+            <div class="loader-text">Carregando...</div>
+        </div>
+    </div>
+
+    <div id="setup-modal" class="modal">
+        <div class="modal-content">
+            <h3>Configuração do Mural</h3>
+            <p>Escolha uma opção para compartilhar este mural:</p>
+            <div style="margin-top: 15px;">
+                <button id="create-new-storage">Criar Novo Mural</button>
+                <div style="margin-top: 20px;">
+                    <p>Ou entre em um mural existente:</p>
+                    <input type="text" id="storage-id-input" placeholder="Digite o código do mural compartilhado">
+                    <button id="join-storage" style="margin-top: 10px;">Entrar no Mural</button>
+                </div>
+            </div>
         </div>
     </div>
 
@@ -321,13 +375,15 @@
             <p>Compartilhe links e conteúdo com seus amigos</p>
             <div style="margin-top: 12px;">
                 <input type="text" id="username-input" class="username-input" placeholder="Seu nome">
-                <span id="status-indicator" class="status-indicator"></span>
-                <span id="status-text" class="status-text">Conectando...</span>
             </div>
         </header>
 
-        <div id="offline-mode" class="offline-mode">
-            Modo offline: Você poderá ver e adicionar conteúdo localmente, mas as alterações não serão sincronizadas com outros dispositivos até que a conexão seja reestabelecida.
+        <div id="info-banner" class="info-banner">
+            Para que todos vejam os mesmos conteúdos, compartilhe este código do mural:
+            <div class="storage-url-container">
+                <input type="text" id="storage-url" class="storage-url-input" readonly>
+                <button id="copy-btn" class="copy-btn">Copiar</button>
+            </div>
         </div>
 
         <div class="input-section">
@@ -348,9 +404,12 @@
     </div>
 
     <script>
-        // Configurações do Supabase (banco de dados em tempo real)
-        const SUPABASE_URL = 'https://ijtrgadnfkqitdrjchgw.supabase.co';
-        const SUPABASE_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImlqdHJnYWRuZmtxaXRkcmpjaGd3Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3MTgwNjg2NTQsImV4cCI6MjAzMzY0NDY1NH0.xsUW6j-J1_PKJvuDLmmF84-NHZEKcmEJgJc9QQrg_2c';
+        // Configurações e variáveis
+        const DB_PREFIX = 'mural-compartilhado-';
+        let currentStorageId = '';
+        let posts = [];
+        let username = localStorage.getItem('username') || 'Anônimo';
+        let userId = localStorage.getItem('userId') || generateUserId();
         
         // Elementos DOM
         const linkInput = document.getElementById('link-input');
@@ -363,72 +422,63 @@
         const alertError = document.getElementById('alert-error');
         const globalLoading = document.getElementById('global-loading');
         const usernameInput = document.getElementById('username-input');
-        const statusIndicator = document.getElementById('status-indicator');
-        const statusText = document.getElementById('status-text');
         const errorMessage = document.getElementById('error-message');
-        const offlineMode = document.getElementById('offline-mode');
+        const storageUrlInput = document.getElementById('storage-url');
+        const copyBtn = document.getElementById('copy-btn');
+        const setupModal = document.getElementById('setup-modal');
+        const createNewStorageBtn = document.getElementById('create-new-storage');
+        const joinStorageBtn = document.getElementById('join-storage');
+        const storageIdInput = document.getElementById('storage-id-input');
         
-        // Estado da aplicação
-        let posts = [];
-        let localPosts = []; // Para armazenar posts quando offline
-        let username = localStorage.getItem('username') || 'Anônimo';
-        let userId = localStorage.getItem('userId') || generateUserId();
-        let isConnected = false;
-        let isOfflineMode = false;
-        
-        // Tentar carregar posts locais
-        try {
-            const savedPosts = localStorage.getItem('localPosts');
-            if (savedPosts) {
-                localPosts = JSON.parse(savedPosts);
-            }
-        } catch (e) {
-            console.error('Erro ao carregar posts locais:', e);
-        }
-        
-        // Inicializar Supabase
-        let supabaseClient;
-        try {
-            if (window.supabase) {
-                supabaseClient = window.supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
-                console.log('Supabase inicializado com sucesso');
-            } else {
-                console.error('Biblioteca Supabase não disponível');
-                activateOfflineMode('Biblioteca Supabase não disponível');
-            }
-        } catch (error) {
-            console.error('Erro ao inicializar Supabase:', error);
-            activateOfflineMode('Falha ao inicializar conexão com o servidor');
-        }
+        // Configurar o banco de dados
+        const db = localforage.createInstance({
+            name: 'muralDB'
+        });
         
         // Inicialização
         init();
         
         async function init() {
-            try {
-                // Carregar nome de usuário salvo
-                usernameInput.value = username;
-                
-                // Configurar listeners de eventos
+            // Carregar nome de usuário salvo
+            usernameInput.value = username;
+            
+            // Verificar se já tem um ID de armazenamento salvo
+            const savedStorageId = localStorage.getItem('muralStorageId');
+            
+            if (savedStorageId) {
+                // Usar o ID salvo
+                currentStorageId = savedStorageId;
+                await loadPosts();
                 setupEventListeners();
-                
-                // Tentar conectar ao Supabase
-                if (supabaseClient) {
-                    await connect();
-                } else {
-                    throw new Error('Cliente Supabase não disponível');
-                }
-                
-                // Esconder tela de carregamento
+                updateStorageUrl();
                 globalLoading.style.display = 'none';
-                
-            } catch (error) {
-                console.error('Erro na inicialização:', error);
-                activateOfflineMode(error.message);
+            } else {
+                // Mostrar modal de configuração
                 globalLoading.style.display = 'none';
+                setupModal.style.display = 'block';
             }
         }
         
+        // Configurar localforage para o ID de armazenamento especificado
+        function setupStorage(storageId) {
+            currentStorageId = storageId;
+            localStorage.setItem('muralStorageId', storageId);
+            updateStorageUrl();
+        }
+        
+        // Atualizar a URL para compartilhamento
+        function updateStorageUrl() {
+            storageUrlInput.value = currentStorageId;
+        }
+        
+        // Copiar URL para o clipboard
+        function copyToClipboard() {
+            storageUrlInput.select();
+            document.execCommand('copy');
+            alert('Código copiado! Compartilhe com seus amigos para que eles vejam o mesmo mural.');
+        }
+        
+        // Configurar listeners de eventos
         function setupEventListeners() {
             // Botão para adicionar post
             submitButton.addEventListener('click', addPost);
@@ -446,81 +496,41 @@
                 }
             });
             
-            // Verificar periodicamente a conexão
-            window.addEventListener('online', tryReconnect);
-            window.addEventListener('offline', () => activateOfflineMode('Dispositivo offline'));
+            // Botão de copiar URL
+            copyBtn.addEventListener('click', copyToClipboard);
+            
+            // Botões do modal
+            createNewStorageBtn.addEventListener('click', () => {
+                const newId = generateStorageId();
+                setupStorage(newId);
+                setupModal.style.display = 'none';
+                loadPosts();
+            });
+            
+            joinStorageBtn.addEventListener('click', () => {
+                const inputId = storageIdInput.value.trim();
+                if (inputId) {
+                    setupStorage(inputId);
+                    setupModal.style.display = 'none';
+                    loadPosts();
+                } else {
+                    alert('Por favor, digite um código de mural válido.');
+                }
+            });
+            
+            // Configurar verificação periódica de atualizações
+            setInterval(checkForUpdates, 5000);
         }
         
-        async function tryReconnect() {
-            if (isOfflineMode && navigator.onLine && supabaseClient) {
-                try {
-                    await connect();
-                    isOfflineMode = false;
-                    offlineMode.style.display = 'none';
-                    showAlert('success');
-                    
-                    // Tentar sincronizar posts locais
-                    syncLocalPosts();
-                } catch (error) {
-                    console.error('Falha na reconexão:', error);
-                }
+        // Gerar ID aleatório para armazenamento
+        function generateStorageId() {
+            // Gerar um ID curto e fácil de compartilhar (6 caracteres)
+            const chars = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789';
+            let id = '';
+            for (let i = 0; i < 6; i++) {
+                id += chars.charAt(Math.floor(Math.random() * chars.length));
             }
-        }
-        
-        // Ativar modo offline
-        function activateOfflineMode(reason) {
-            isOfflineMode = true;
-            isConnected = false;
-            updateConnectionStatus();
-            offlineMode.style.display = 'block';
-            
-            // Usar posts locais se disponíveis
-            if (localPosts.length > 0) {
-                posts = [...localPosts];
-                renderPosts();
-            }
-            
-            console.warn(`Modo offline ativado: ${reason}`);
-        }
-        
-        // Sincronizar posts locais com o servidor
-        async function syncLocalPosts() {
-            if (!supabaseClient || localPosts.length === 0) return;
-            
-            try {
-                for (const post of localPosts) {
-                    // Verificar se já foi sincronizado
-                    if (!post.synced) {
-                        await supabaseClient
-                            .from('posts')
-                            .insert([{
-                                url: post.url,
-                                comment: post.comment,
-                                author: post.author,
-                                user_id: post.user_id,
-                                created_at: post.created_at
-                            }]);
-                        
-                        post.synced = true;
-                    }
-                }
-                
-                // Atualizar posts locais
-                localStorage.setItem('localPosts', JSON.stringify(localPosts));
-                
-                // Recarregar posts do servidor
-                const { data } = await supabaseClient
-                    .from('posts')
-                    .select('*')
-                    .order('created_at', { ascending: false });
-                
-                if (data) {
-                    posts = data;
-                    renderPosts();
-                }
-            } catch (error) {
-                console.error('Erro ao sincronizar posts locais:', error);
-            }
+            return id;
         }
         
         // Gerar ID único para o usuário
@@ -539,79 +549,58 @@
             }, 5000);
         }
         
-        // Conectar ao Supabase e carregar posts iniciais
-        async function connect() {
+        // Verificar atualizações
+        async function checkForUpdates() {
+            if (!currentStorageId) return;
+            
             try {
-                // Verificar se Supabase está disponível
-                if (!supabaseClient) {
-                    throw new Error('Cliente Supabase não inicializado');
-                }
+                const storedPosts = await db.getItem(DB_PREFIX + currentStorageId);
                 
-                // Verificar se o URL está acessível
-                const response = await fetch(SUPABASE_URL, { method: 'HEAD', mode: 'no-cors' });
-                
-                // Buscar posts existentes
-                const { data, error } = await supabaseClient
-                    .from('posts')
-                    .select('*')
-                    .order('created_at', { ascending: false });
-                
-                if (error) {
-                    throw error;
-                }
-                
-                posts = data || [];
-                renderPosts();
-                
-                // Configurar listener em tempo real
-                setupRealtimeListener();
-                
-                // Atualizar status
-                isConnected = true;
-                updateConnectionStatus();
-            } catch (error) {
-                console.error('Erro ao conectar:', error);
-                activateOfflineMode('Falha de conexão com o servidor');
-            }
-        }
-        
-        // Configurar listener para atualizações em tempo real
-        function setupRealtimeListener() {
-            try {
-                if (!supabaseClient) return;
-                
-                supabaseClient
-                    .channel('public:posts')
-                    .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'posts' }, payload => {
-                        // Adicionar novo post ao início
-                        const newPost = payload.new;
-                        
-                        // Verificar se o post já existe
-                        if (!posts.some(post => post.id === newPost.id)) {
-                            posts.unshift(newPost);
-                            renderPosts();
-                        }
-                    })
-                    .on('postgres_changes', { event: 'DELETE', schema: 'public', table: 'posts' }, payload => {
-                        // Remover post excluído
-                        const deletedId = payload.old.id;
-                        posts = posts.filter(post => post.id !== deletedId);
+                if (storedPosts) {
+                    const parsedPosts = JSON.parse(storedPosts);
+                    
+                    // Verificar se há alterações
+                    if (JSON.stringify(parsedPosts) !== JSON.stringify(posts)) {
+                        posts = parsedPosts;
                         renderPosts();
-                    })
-                    .subscribe();
+                    }
+                }
             } catch (error) {
-                console.error('Erro ao configurar realtime:', error);
+                console.error('Erro ao verificar atualizações:', error);
             }
         }
         
-        // Atualizar indicador de conexão
-        function updateConnectionStatus() {
-            if (isConnected) {
-                statusIndicator.classList.add('online');
-                statusText.textContent = 'Conectado';
-            } else {
-                statusIndicator.classList.remove('online');
-                statusText.textContent = 'Desconectado';
+        // Carregar posts do armazenamento
+        async function loadPosts() {
+            if (!currentStorageId) return;
+            
+            try {
+                const storedPosts = await db.getItem(DB_PREFIX + currentStorageId);
+                
+                if (storedPosts) {
+                    posts = JSON.parse(storedPosts);
+                } else {
+                    posts = [];
+                    // Inicializar o armazenamento se for novo
+                    await savePosts();
+                }
+                
+                renderPosts();
+            } catch (error) {
+                console.error('Erro ao carregar posts:', error);
+                showError('Erro ao carregar conteúdo. Tente novamente.');
+            }
+        }
+        
+        // Salvar posts no armazenamento
+        async function savePosts() {
+            if (!currentStorageId) return;
+            
+            try {
+                await db.setItem(DB_PREFIX + currentStorageId, JSON.stringify(posts));
+            } catch (error) {
+                console.error('Erro ao salvar posts:', error);
+                showError('Erro ao salvar conteúdo. Verifique sua conexão.');
             }
         }
         
@@ -637,81 +626,39 @@
             submitButton.disabled = true;
             
             try {
+                // Verificar se é uma URL de imagem
+                const isImage = isImageUrl(url);
+                const isVideo = isVideoUrl(url);
+                
                 // Criar objeto do post
                 const newPost = {
-                    id: Date.now().toString(), // ID local temporário
+                    id: Date.now().toString(),
                     url: url,
+                    title: isImage ? 'Imagem compartilhada' : 'Link compartilhado',
+                    image: isImage ? url : (isVideo ? null : null),
                     comment: comment,
                     author: username,
                     user_id: userId,
-                    created_at: new Date().toISOString(),
-                    synced: false // Para controle de sincronização
+                    created_at: new Date().toISOString()
                 };
                 
-                // Se estiver no modo offline, salvar localmente
-                if (isOfflineMode) {
-                    localPosts.unshift(newPost);
-                    localStorage.setItem('localPosts', JSON.stringify(localPosts));
-                    posts = [...localPosts];
-                    renderPosts();
-                    showAlert('success');
-                } else {
-                    // Tentar salvar no Supabase
-                    const { error } = await supabaseClient
-                        .from('posts')
-                        .insert([{
-                            url: url,
-                            comment: comment,
-                            author: username,
-                            user_id: userId,
-                            created_at: new Date().toISOString()
-                        }]);
-                    
-                    if (error) {
-                        // Se houver erro, salvar localmente e ativar modo offline
-                        console.error('Erro ao salvar no servidor:', error);
-                        localPosts.unshift(newPost);
-                        localStorage.setItem('localPosts', JSON.stringify(localPosts));
-                        activateOfflineMode('Erro ao salvar no servidor: ' + error.message);
-                        
-                        // Atualizar UI com o post local
-                        posts.unshift(newPost);
-                        renderPosts();
-                    }
-                    
-                    showAlert('success');
-                }
+                // Adicionar ao array e salvar
+                posts.unshift(newPost);
+                await savePosts();
+                
+                // Atualizar UI
+                renderPosts();
                 
                 // Limpar campos
                 linkInput.value = '';
                 commentInput.value = '';
                 
+                // Mostrar alerta de sucesso
+                showAlert('success');
+                
             } catch (error) {
                 console.error('Erro ao adicionar post:', error);
                 showError(`Falha ao salvar: ${error.message || 'Erro no servidor'}`);
-                
-                // Tentar salvar localmente em caso de erro
-                try {
-                    const newPost = {
-                        id: Date.now().toString(),
-                        url: url,
-                        comment: comment,
-                        author: username,
-                        user_id: userId,
-                        created_at: new Date().toISOString(),
-                        synced: false
-                    };
-                    
-                    localPosts.unshift(newPost);
-                    localStorage.setItem('localPosts', JSON.stringify(localPosts));
-                    activateOfflineMode('Salvando localmente devido a falha de rede');
-                    
-                    // Atualizar UI
-                    posts.unshift(newPost);
-                    renderPosts();
-                } catch (localError) {
-                    console.error('Erro ao salvar localmente:', localError);
-                }
             } finally {
                 // Esconder estado de carregamento
                 loadingIcon.style.display = 'none';
@@ -727,6 +674,20 @@
             } catch (_) {
                 return false;
             }
+        }
+        
+        // Verifica se é URL de imagem
+        function isImageUrl(url) {
+            return /\.(jpeg|jpg|gif|png|webp)$/i.test(url);
+        }
+        
+        // Verifica se é URL de vídeo
+        function isVideoUrl(url) {
+            return url.includes('youtube.com') || 
+                   url.includes('youtu.be') || 
+                   url.includes('vimeo.com') ||
+                   url.includes('dailymotion.com') ||
+                   /\.(mp4|webm|ogg)$/i.test(url);
         }
         
         // Renderiza todos os posts
@@ -779,7 +740,6 @@
                         <span>Compartilhado por ${post.author || 'Anônimo'} • ${date}</span>
                         ${post.user_id === userId ? 
                           `<button class="delete-button" onclick="deletePost('${post.id}')">Remover</button>` : ''}
-                        ${post.synced === false ? '<span style="color: orange; margin-left: 5px;">⚠️ Não sincronizado</span>' : ''}
                     </div>
                 `;
                 
@@ -792,25 +752,17 @@
         async function deletePost(id) {
             if (confirm('Tem certeza que deseja remover este conteúdo?')) {
                 try {
-                    // Remover localmente primeiro para feedback instantâneo
+                    // Remover post do array
                     posts = posts.filter(post => post.id !== id);
-                    localPosts = localPosts.filter(post => post.id !== id);
-                    localStorage.setItem('localPosts', JSON.stringify(localPosts));
-                    renderPosts();
                     
-                    // Se online, tentar remover do servidor
-                    if (!isOfflineMode && supabaseClient) {
-                        const { error } = await supabaseClient
-                            .from('posts')
-                            .delete()
-                            .eq('id', id)
-                            .eq('user_id', userId);
-                        
-                        if (error) throw error;
-                    }
+                    // Salvar alterações
+                    await savePosts();
+                    
+                    // Atualizar UI
+                    renderPosts();
                 } catch (error) {
                     console.error('Erro ao remover post:', error);
-                    showError(`Não foi possível remover o conteúdo: ${error.message || 'Erro no servidor'}`);
+                    showError(`Não foi possível remover o conteúdo: ${error.message || 'Erro ao salvar.'}`);
                 }
             }
         }
